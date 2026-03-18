@@ -61,7 +61,7 @@ function AutoControlledVideo() {
       <Row>
         {/* Left Column: Main Video Area */}
         <Col lg={8} className="mb-4">
-          <Card className="shadow-sm border-0 bg-dark text-white h-100">
+          <Card className="shadow-sm bg-dark text-white h-100">
             <Card.Body className="p-0 overflow-hidden" style={{ borderRadius: '8px 8px 0 0' }}>
               {/* Responsive 16:9 aspect ratio container for YouTube */}
               <div className="ratio ratio-16x9">
@@ -75,7 +75,7 @@ function AutoControlledVideo() {
                       autoplay: 1,
                       controls: 0,
                       disablekb: 1,
-                      modestbranding: 1,
+                      modestbranding: 0,
                       rel: 0,
                     },
                   }}
