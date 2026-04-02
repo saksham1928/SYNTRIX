@@ -24,10 +24,10 @@ function Login() {
       const data = await response.json();
 
       if (response.ok) {
-        // 1. Save the digital token to the browser
+        // Save the digital token to the browser
         localStorage.setItem('stryx_token', data.token);
         
-        // 2. Redirect to the Dashboard
+        // Redirect to the Dashboard
         navigate('/');
       } else {
         // Invalid email or password

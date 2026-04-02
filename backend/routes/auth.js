@@ -11,20 +11,20 @@ router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    // 1. Check if the user already exists
+    // Check if the user already exists
     let user = await User.findOne({ email });
     if (user) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // 2. Create a new user instance
+    // Create a new user instance
     user = new User({ name, email, password });
 
-    // 3. Hash the password before saving to database
+    // Hash the password before saving to database
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(password, salt);
 
-    // 4. Save to database
+    // Save to database
     await user.save();
 
     res.status(201).json({ message: 'User registered successfully' });
@@ -40,19 +40,19 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 1. Check if user exists
+    // Check if user exists
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json({ message: 'Invalid email or password' });
     }
 
-    // 2. Compare the entered password with the hashed password in the database
+    // Compare the entered password with the hashed password in the database
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid email or password' });
     }
 
-    // 3. Generate a JSON Web Token (JWT) so the user stays logged in
+    // Generate a JSON Web Token (JWT) so the user stays logged in
     const payload = { userId: user._id };
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
 
