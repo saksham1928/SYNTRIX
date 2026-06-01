@@ -9,6 +9,7 @@ const WebcamMonitor = forwardRef(({ isFocused, debugInfo, showPreview = true }, 
       <Webcam
         ref={ref}
         audio={false}
+        mirrored={true}
         width={FACE_DETECTION_CONFIG.WEBCAM_WIDTH}
         height={FACE_DETECTION_CONFIG.WEBCAM_HEIGHT}
         screenshotFormat="image/jpeg"
@@ -40,6 +41,7 @@ const WebcamMonitor = forwardRef(({ isFocused, debugInfo, showPreview = true }, 
         <Webcam
           ref={ref}
           audio={false}
+          mirrored={true}
           width="100%" // Make it fill the card width dynamically
           screenshotFormat="image/jpeg"
           videoConstraints={{
