@@ -1,5 +1,5 @@
-import YouTube from "react-youtube";
 import { useRef, useState } from "react";
+import CustomVideoPlayer from "../CustomVideoPlayer/CustomVideoPlayer";
 import { useFaceMeshDetection } from "../../hooks/useFaceMeshDetection";
 import WebcamMonitor from "../WebcamMonitor/WebcamMonitor";
 import { Container, Row, Col, Card, Badge, Alert, Button } from "react-bootstrap";
@@ -31,10 +31,7 @@ function AutoControlledVideo() {
     }
   );
 
-  const onReady = (event) => {
-    playerRef.current = event.target;
-    playerRef.current.playVideo();
-  };
+  // onReady is now handled internally by CustomVideoPlayer
 
   return (
     <Container fluid className="py-4">
@@ -63,24 +60,12 @@ function AutoControlledVideo() {
         <Col lg={8} className="mb-4">
           <Card className="shadow-sm bg-dark text-white h-100">
             <Card.Body className="p-0 overflow-hidden" style={{ borderRadius: '8px 8px 0 0' }}>
-              {/* Responsive 16:9 aspect ratio container for YouTube */}
-              <div className="ratio ratio-16x9">
-                <YouTube
-                  videoId="dQw4w9WgXcQ"
-                  onReady={onReady}
-                  opts={{
-                    width: "100%",
-                    height: "100%",
-                    playerVars: {
-                      autoplay: 1,
-                      controls: 0,
-                      disablekb: 1,
-                      modestbranding: 0,
-                      rel: 0,
-                    },
-                  }}
-                />
-              </div>
+              {/* Responsive custom video player */}
+              <CustomVideoPlayer 
+                ref={playerRef} 
+                videoId="dQw4w9WgXcQ" 
+                onPlayStateChange={(playing) => setIsVideoPlaying(playing)} 
+              />
             </Card.Body>
             <Card.Footer className="d-flex justify-content-between align-items-center bg-dark border-top border-secondary py-3">
               <div className="d-flex align-items-center">
