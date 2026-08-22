@@ -15,6 +15,7 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/courses', require('./routes/courses'));
 
 // The updated connection block using the Server API configuration
 mongoose.connect(process.env.MONGO_URI, {
@@ -32,4 +33,4 @@ mongoose.connect(process.env.MONGO_URI, {
   })
   .catch((error) => {
     console.error('Error connecting to MongoDB:', error.message);
-  });
+  });
