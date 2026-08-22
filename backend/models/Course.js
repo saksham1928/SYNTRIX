@@ -20,12 +20,11 @@ const courseSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
-// Sort lectures by order before saving
-courseSchema.pre('save', function (next) {
+// Sort lectures by order before saving (Mongoose 9: use async, no next callback)
+courseSchema.pre('save', async function () {
   if (this.lectures && this.lectures.length > 1) {
     this.lectures.sort((a, b) => a.order - b.order);
   }
-  next();
 });
 
 module.exports = mongoose.model('Course', courseSchema);

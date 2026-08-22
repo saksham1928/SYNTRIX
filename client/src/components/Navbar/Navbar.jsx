@@ -27,32 +27,45 @@ function NavigationBar() {
 
             {isAuthenticated ? (
               <>
-                <Nav.Link
-                  as={Link} to="/"
-                  className={`px-3 ${isActive('/') ? 'text-white' : 'text-secondary'}`}
-                >
-                  Dashboard
-                </Nav.Link>
-                <Nav.Link
-                  as={Link} to="/courses"
-                  className={`px-3 ${isActive('/courses') ? 'text-white' : 'text-secondary'}`}
-                >
-                  My Courses
-                </Nav.Link>
-                <Nav.Link
-                  as={Link} to="/analytics"
-                  className={`px-3 ${isActive('/analytics') ? 'text-white' : 'text-secondary'}`}
-                >
-                  Focus Analytics
-                </Nav.Link>
-                <Nav.Link
-                  as={Link} to="/profile"
-                  className={`px-3 ${isActive('/profile') ? 'text-white' : 'text-secondary'}`}
-                >
-                  Profile
-                </Nav.Link>
+                {/* ── Admin nav: only the Admin panel link ── */}
+                {user?.role === 'admin' ? (
+                  <Nav.Link
+                    as={Link} to="/admin"
+                    className={`px-3 fw-bold ${isActive('/admin') ? 'text-warning' : 'text-warning text-opacity-75'}`}
+                  >
+                    ⚙ Admin Panel
+                  </Nav.Link>
+                ) : (
+                  /* ── Student nav: full set of pages ── */
+                  <>
+                    <Nav.Link
+                      as={Link} to="/"
+                      className={`px-3 ${isActive('/') ? 'text-white' : 'text-secondary'}`}
+                    >
+                      Dashboard
+                    </Nav.Link>
+                    <Nav.Link
+                      as={Link} to="/courses"
+                      className={`px-3 ${isActive('/courses') ? 'text-white' : 'text-secondary'}`}
+                    >
+                      My Courses
+                    </Nav.Link>
+                    <Nav.Link
+                      as={Link} to="/analytics"
+                      className={`px-3 ${isActive('/analytics') ? 'text-white' : 'text-secondary'}`}
+                    >
+                      Focus Analytics
+                    </Nav.Link>
+                    <Nav.Link
+                      as={Link} to="/profile"
+                      className={`px-3 ${isActive('/profile') ? 'text-white' : 'text-secondary'}`}
+                    >
+                      Profile
+                    </Nav.Link>
+                  </>
+                )}
 
-                {/* User badge */}
+                {/* User badge — shared for both roles */}
                 {user && (
                   <span className="px-3 d-flex align-items-center gap-2">
                     <span className="text-white fw-semibold small">{user.name}</span>
@@ -62,7 +75,7 @@ function NavigationBar() {
                   </span>
                 )}
 
-                {/* Logout */}
+                {/* Logout — shared for both roles */}
                 <Button
                   id="btn-logout"
                   variant="outline-danger"
