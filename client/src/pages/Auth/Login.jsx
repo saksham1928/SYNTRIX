@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Container, Card, Form, Button, Alert } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 function Login() {
   const [email, setEmail] = useState('');
@@ -8,6 +9,7 @@ function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { loginSuccess } = useAuth();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -24,13 +26,13 @@ function Login() {
       const data = await response.json();
 
       if (response.ok) {
-        // Save the digital token to the browser
+        // Save the token to localStorage
         localStorage.setItem('stryx_token', data.token);
-        
+        // Notify AuthContext so Navbar + ProtectedRoute update immediately
+        loginSuccess(data.user);
         // Redirect to the Dashboard
         navigate('/');
       } else {
-        // Invalid email or password
         setError(data.message || 'Login failed');
       }
     } catch (err) {
@@ -49,13 +51,12 @@ function Login() {
           {error && <Alert variant="danger" className="py-2">{error}</Alert>}
 
           <Form onSubmit={handleLogin}>
-             {/* ... Keep your existing Form.Group inputs for Email and Password exactly the same ... */}
-            <Form.Group className="mb-3" controlId="email">
+            <Form.Group className="mb-3" controlId="login-email">
               <Form.Label className="text-secondary">Email address</Form.Label>
               <Form.Control type="email" placeholder="Enter email" className="bg-secondary text-white border-0" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </Form.Group>
 
-            <Form.Group className="mb-4" controlId="password">
+            <Form.Group className="mb-4" controlId="login-password">
               <Form.Label className="text-secondary">Password</Form.Label>
               <Form.Control type="password" placeholder="Password" className="bg-secondary text-white border-0" value={password} onChange={(e) => setPassword(e.target.value)} required />
             </Form.Group>
@@ -74,4 +75,4 @@ function Login() {
   );
 }
 
-export default Login;
+export default Login;

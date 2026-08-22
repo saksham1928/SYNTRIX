@@ -8,6 +8,8 @@ export function useFaceMeshDetection(webcamRef, options = {}) {
     onFocusLost,
     onFocusRegained,
     focusLossThreshold = FACE_DETECTION_CONFIG.FOCUS_LOSS_THRESHOLD,
+    // Set enabled=false to skip initialization entirely (deferred mode)
+    enabled = true,
   } = options;
 
   const faceLandmarkerRef = useRef(null);
@@ -20,14 +22,19 @@ export function useFaceMeshDetection(webcamRef, options = {}) {
   const [error, setError] = useState(null);
   const [debugInfo, setDebugInfo] = useState("");
 
-  // Initialize MediaPipe Face Landmarker
+  // Initialize MediaPipe Face Landmarker — only when `enabled` is true
   useEffect(() => {
+    if (!enabled) return;
+
     let isMounted = true;
+    // Holds a reference so we can close the landmarker even if it was
+    // created after the cleanup (unmount-during-init race fix)
+    let localLandmarker = null;
 
     const initializeFaceLandmarker = async () => {
       try {
         console.log("Loading MediaPipe Face Mesh model...");
-        
+
         const vision = await FilesetResolver.forVisionTasks(
           FACE_DETECTION_CONFIG.WASM_PATH
         );
@@ -44,10 +51,17 @@ export function useFaceMeshDetection(webcamRef, options = {}) {
           minTrackingConfidence: FACE_DETECTION_CONFIG.MIN_TRACKING_CONFIDENCE,
         });
 
+        localLandmarker = landmarker;
+
         if (isMounted) {
           faceLandmarkerRef.current = landmarker;
           setIsInitialized(true);
           console.log("Face Mesh model loaded successfully");
+        } else {
+          // Component unmounted while the model was loading — close immediately
+          // so GPU resources are freed and don't block page navigation
+          console.log("Unmounted before model finished — closing landmarker immediately");
+          landmarker.close();
         }
       } catch (err) {
         console.error("Error initializing face landmarker:", err);
@@ -61,14 +75,28 @@ export function useFaceMeshDetection(webcamRef, options = {}) {
 
     return () => {
       isMounted = false;
+
+      // Cancel animation frame first — stops the GPU detection loop immediately
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
       }
+
+      // Close the landmarker stored on the ref (normal path)
       if (faceLandmarkerRef.current) {
         faceLandmarkerRef.current.close();
+        faceLandmarkerRef.current = null;
       }
+
+      // Safety net: if localLandmarker was set but faceLandmarkerRef wasn't
+      // (e.g. unmount happened between the two assignments), close it too
+      if (localLandmarker && localLandmarker !== faceLandmarkerRef.current) {
+        localLandmarker.close();
+      }
+
+      setIsInitialized(false);
     };
-  }, []);
+  }, [enabled]); // re-run when enabled changes (deferred init)
 
   // Detection loop with facial analysis
   const detectFaceAndFocus = useCallback(async () => {
@@ -135,7 +163,7 @@ export function useFaceMeshDetection(webcamRef, options = {}) {
         // No face detected at all
         setIsFocused(false);
         const timeSinceFocus = nowInMs - lastFocusTimeRef.current;
-        
+
         setDebugInfo(` No face detected (${timeSinceFocus}ms)`);
 
         if (timeSinceFocus > focusLossThreshold && wasFocusedRef.current) {
@@ -151,7 +179,7 @@ export function useFaceMeshDetection(webcamRef, options = {}) {
     animationRef.current = requestAnimationFrame(detectFaceAndFocus);
   }, [webcamRef, onFocusLost, onFocusRegained, focusLossThreshold]);
 
-  // Start detection when initialized
+  // Start detection loop only after model is fully initialized
   useEffect(() => {
     if (isInitialized) {
       detectFaceAndFocus();
@@ -160,6 +188,7 @@ export function useFaceMeshDetection(webcamRef, options = {}) {
     return () => {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
       }
     };
   }, [isInitialized, detectFaceAndFocus]);
@@ -170,4 +199,4 @@ export function useFaceMeshDetection(webcamRef, options = {}) {
     error,
     debugInfo,
   };
-}
+}
