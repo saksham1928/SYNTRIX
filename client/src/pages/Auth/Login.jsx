@@ -30,8 +30,8 @@ function Login() {
         localStorage.setItem('stryx_token', data.token);
         // Notify AuthContext so Navbar + ProtectedRoute update immediately
         loginSuccess(data.user);
-        // Redirect to the Dashboard
-        navigate('/');
+        // Admins go to the admin panel; students go to the Dashboard
+        navigate(data.user?.role === 'admin' ? '/admin' : '/');
       } else {
         setError(data.message || 'Login failed');
       }

@@ -1,6 +1,8 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import ProtectedRoute from '../components/ProtectedRoute/ProtectedRoute';
+import AdminRoute from '../components/AdminRoute/AdminRoute';
+import StudentRoute from '../components/StudentRoute/StudentRoute';
 
 // Lazy-load every page so the heavy Dashboard/MediaPipe bundle
 // is only fetched when the user actually navigates there.
@@ -10,6 +12,7 @@ const Analytics = lazy(() => import('../pages/Analytics/Analytics'));
 const Profile   = lazy(() => import('../pages/Profile/Profile'));
 const Login     = lazy(() => import('../pages/Auth/Login'));
 const Register  = lazy(() => import('../pages/Auth/Register'));
+const Admin     = lazy(() => import('../pages/Admin/Admin'));
 
 // Shared full-screen spinner shown while a lazy chunk is loading
 function PageSpinner() {
@@ -34,11 +37,24 @@ function AppRoutes() {
         <Route path="/login"    element={<Login />} />
         <Route path="/register" element={<Register />} />
 
-        {/* Protected Routes */}
-        <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-        <Route path="/courses"   element={<ProtectedRoute><Courses /></ProtectedRoute>} />
-        <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
-        <Route path="/profile"   element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+        {/* Student-only Protected Routes — admins are redirected to /admin */}
+        <Route path="/" element={
+          <ProtectedRoute><StudentRoute><Dashboard /></StudentRoute></ProtectedRoute>
+        } />
+        <Route path="/courses" element={
+          <ProtectedRoute><StudentRoute><Courses /></StudentRoute></ProtectedRoute>
+        } />
+        <Route path="/analytics" element={
+          <ProtectedRoute><StudentRoute><Analytics /></StudentRoute></ProtectedRoute>
+        } />
+        <Route path="/profile" element={
+          <ProtectedRoute><StudentRoute><Profile /></StudentRoute></ProtectedRoute>
+        } />
+
+        {/* Admin-only Route */}
+        <Route path="/admin" element={
+          <ProtectedRoute><AdminRoute><Admin /></AdminRoute></ProtectedRoute>
+        } />
 
         {/* Catch-all */}
         <Route
@@ -54,4 +70,5 @@ function AppRoutes() {
   );
 }
 
-export default AppRoutes;
+export default AppRoutes;
+
