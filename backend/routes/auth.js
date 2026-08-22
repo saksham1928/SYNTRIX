@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { verifyToken } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -56,11 +57,27 @@ router.post('/login', async (req, res) => {
     const payload = { userId: user._id };
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-    res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
+    res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error during login' });
   }
 });
 
-module.exports = router;
+// @route   GET /api/auth/me
+// @desc    Get the currently authenticated user's details
+// @access  Private (requires valid JWT)
+router.get('/me', verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('id name email role');
+    if (!user) {
+      return res.status(401).json({ message: 'User not found.' });
+    }
+    res.json({ id: user._id, name: user.name, email: user.email, role: user.role });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error fetching user.' });
+  }
+});
+
+module.exports = router;
