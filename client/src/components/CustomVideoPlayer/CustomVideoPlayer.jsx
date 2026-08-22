@@ -28,10 +28,18 @@ const formatTime = (timeInSeconds) => {
   return `${m}:${s}`;
 };
 
-const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange }, ref) => {
+/**
+ * CustomVideoPlayer
+ *
+ * Props:
+ *   videoId          — YouTube 11-char video ID (required)
+ *   onPlayStateChange(playing: bool) — fired on play/pause
+ *   onVideoEnded()   — fired when YouTube player reports state 0 (ENDED)
+ */
+const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange, onVideoEnded }, ref) => {
   const containerRef = useRef(null);
   const internalPlayerRef = useRef(null);
-  
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -39,18 +47,22 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange }, ref) => {
   const [playbackRate, setPlaybackRate] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Expose play/pause to the parent (AutoControlledVideo)
+  // Reset progress trackers whenever the video changes
+  useEffect(() => {
+    setCurrentTime(0);
+    setMaxTimeWatched(0);
+    setDuration(0);
+    setIsPlaying(false);
+  }, [videoId]);
+
+  // Expose play/pause to parent (AutoControlledVideo)
   useImperativeHandle(ref, () => ({
     playVideo: () => {
-      if (internalPlayerRef.current) {
-        internalPlayerRef.current.playVideo();
-      }
+      if (internalPlayerRef.current) internalPlayerRef.current.playVideo();
     },
     pauseVideo: () => {
-      if (internalPlayerRef.current) {
-        internalPlayerRef.current.pauseVideo();
-      }
-    }
+      if (internalPlayerRef.current) internalPlayerRef.current.pauseVideo();
+    },
   }));
 
   const onReady = (event) => {
@@ -61,17 +73,23 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange }, ref) => {
   };
 
   const onStateChange = (event) => {
-    // 1 is playing, 2 is paused
     if (event.data === 1) {
+      // Playing
       setIsPlaying(true);
-      if (onPlayStateChange) onPlayStateChange(true);
+      onPlayStateChange?.(true);
     } else if (event.data === 2) {
+      // Paused
       setIsPlaying(false);
-      if (onPlayStateChange) onPlayStateChange(false);
+      onPlayStateChange?.(false);
+    } else if (event.data === 0) {
+      // ENDED — fire callback so parent can mark complete + auto-advance
+      setIsPlaying(false);
+      onPlayStateChange?.(false);
+      onVideoEnded?.();
     }
   };
 
-  // Poll for time updates since react-youtube doesn't have an onTimeUpdate event
+  // Poll current time while playing (react-youtube has no onTimeUpdate)
   useEffect(() => {
     let interval;
     if (isPlaying) {
@@ -79,9 +97,7 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange }, ref) => {
         if (internalPlayerRef.current) {
           const time = await internalPlayerRef.current.getCurrentTime();
           setCurrentTime(time);
-          if (time > maxTimeWatched) {
-            setMaxTimeWatched(time);
-          }
+          if (time > maxTimeWatched) setMaxTimeWatched(time);
         }
       }, 200);
     }
@@ -99,19 +115,17 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange }, ref) => {
 
   const handleProgressClick = (e) => {
     if (!internalPlayerRef.current || duration === 0) return;
-    
     const bar = e.currentTarget;
     const rect = bar.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const percent = Math.max(0, Math.min(1, clickX / rect.width));
     const requestedTime = percent * duration;
 
-    // Prevent forwarding: only allow seeking if requestedTime <= maxTimeWatched
+    // No-forward rule: can only seek back to already-watched time
     if (requestedTime <= maxTimeWatched) {
       internalPlayerRef.current.seekTo(requestedTime, true);
       setCurrentTime(requestedTime);
     } else {
-      // Snap to maxTimeWatched if trying to forward
       internalPlayerRef.current.seekTo(maxTimeWatched, true);
       setCurrentTime(maxTimeWatched);
     }
@@ -120,15 +134,13 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange }, ref) => {
   const handleSpeedChange = (e) => {
     const speed = parseFloat(e.target.value);
     setPlaybackRate(speed);
-    if (internalPlayerRef.current) {
-      internalPlayerRef.current.setPlaybackRate(speed);
-    }
+    if (internalPlayerRef.current) internalPlayerRef.current.setPlaybackRate(speed);
   };
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().catch(err => {
-        console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+      containerRef.current.requestFullscreen().catch((err) => {
+        console.error(`Fullscreen error: ${err.message}`);
       });
     } else {
       document.exitFullscreen();
@@ -136,9 +148,7 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange }, ref) => {
   };
 
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
+    const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
@@ -150,6 +160,7 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange }, ref) => {
     <div className="custom-player-wrapper" ref={containerRef}>
       <div className="video-container">
         <YouTube
+          key={videoId}           /* force remount when videoId changes */
           videoId={videoId}
           onReady={onReady}
           onStateChange={onStateChange}
@@ -163,12 +174,12 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange }, ref) => {
               modestbranding: 1,
               rel: 0,
               showinfo: 0,
-              fs: 0, // Disable YouTube's native fullscreen
-              iv_load_policy: 3, // Hide video annotations
+              fs: 0,
+              iv_load_policy: 3,
             },
           }}
         />
-        {/* Transparent overlay intercepts all clicks meant for the iframe */}
+        {/* Transparent overlay intercepts clicks meant for the iframe */}
         <div className="click-interceptor" onClick={togglePlay}></div>
       </div>
 
@@ -177,7 +188,7 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange }, ref) => {
           <div className="progress-bar-buffer" style={{ width: `${bufferPercent}%` }}></div>
           <div className="progress-bar-fill" style={{ width: `${progressPercent}%` }}></div>
         </div>
-        
+
         <div className="controls-row">
           <div className="controls-left">
             <button className="control-btn" onClick={togglePlay} title={isPlaying ? "Pause" : "Play"}>
@@ -187,7 +198,7 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange }, ref) => {
               {formatTime(currentTime)} / {formatTime(duration)}
             </span>
           </div>
-          
+
           <div className="controls-right">
             <select className="speed-select" value={playbackRate} onChange={handleSpeedChange} title="Playback Speed">
               <option value="0.5">0.5x</option>
@@ -206,5 +217,7 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange }, ref) => {
     </div>
   );
 });
+
+CustomVideoPlayer.displayName = "CustomVideoPlayer";
 
 export default CustomVideoPlayer;
