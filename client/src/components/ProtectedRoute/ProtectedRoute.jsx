@@ -1,16 +1,27 @@
 import { Navigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 function ProtectedRoute({ children }) {
-  // Check if the user has a token in their browser storage
-  const token = localStorage.getItem('stryx_token');
+  const { isAuthenticated, isLoading } = useAuth();
 
-  // If it's literally the string "null" or "undefined", we need to catch it
-  if (!token || token === 'null' || token === 'undefined') {
+  // Wait for AuthContext to finish resolving the session before redirecting.
+  // Without this, a page refresh would flash to /login even for valid tokens.
+  if (isLoading) {
+    return (
+      <div
+        className="d-flex align-items-center justify-content-center"
+        style={{ minHeight: '80vh' }}
+      >
+        <div className="spinner-border text-primary" role="status" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  // If they have a token, render the page they were trying to access
   return children;
 }
 
-export default ProtectedRoute;
+export default ProtectedRoute;
