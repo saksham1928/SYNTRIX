@@ -73,9 +73,10 @@ function distance(p1, p2) {
 export function detectFocus(faceLandmarks) {
   // Thresholds (adjust these based on testing)
   const EYE_CLOSED_THRESHOLD = FACE_DETECTION_CONFIG.EYE_CLOSED_THRESHOLD;
-  const YAW_THRESHOLD = FACE_DETECTION_CONFIG.YAW_THRESHOLD;
-  const PITCH_THRESHOLD = FACE_DETECTION_CONFIG.PITCH_THRESHOLD;
-  const ROLL_THRESHOLD = FACE_DETECTION_CONFIG.ROLL_THRESHOLD;
+  const YAW_THRESHOLD        = FACE_DETECTION_CONFIG.YAW_THRESHOLD;
+  const PITCH_DOWN_THRESHOLD = FACE_DETECTION_CONFIG.PITCH_DOWN_THRESHOLD;
+  const PITCH_UP_THRESHOLD   = FACE_DETECTION_CONFIG.PITCH_UP_THRESHOLD;
+  const ROLL_THRESHOLD       = FACE_DETECTION_CONFIG.ROLL_THRESHOLD;
 
   // Extract eye landmarks
   const leftEyeLandmarks = [
@@ -106,9 +107,12 @@ export function detectFocus(faceLandmarks) {
 
   // Determine focus status
   const eyesClosed = avgEAR < EYE_CLOSED_THRESHOLD;
-  const lookingAway = 
-    Math.abs(yaw) > YAW_THRESHOLD || 
-    Math.abs(pitch) > PITCH_THRESHOLD;
+  // Asymmetric pitch: Y-axis goes DOWN on screen, so nose is always below eyes
+  // at baseline (pitch ≈ 15–20). Looking up reduces pitch; looking down increases it.
+  const lookingAway =
+    Math.abs(yaw) > YAW_THRESHOLD ||
+    pitch > PITCH_DOWN_THRESHOLD ||   // looking down
+    pitch < PITCH_UP_THRESHOLD;       // looking up
   const headTilted = Math.abs(roll) > ROLL_THRESHOLD;
 
   const isFocused = !eyesClosed && !lookingAway && !headTilted;
@@ -120,6 +124,8 @@ export function detectFocus(faceLandmarks) {
       eyesClosed,
       yaw: yaw.toFixed(1),
       pitch: pitch.toFixed(1),
+      pitchDownThreshold: PITCH_DOWN_THRESHOLD,
+      pitchUpThreshold: PITCH_UP_THRESHOLD,
       roll: roll.toFixed(1),
       lookingAway,
       headTilted,

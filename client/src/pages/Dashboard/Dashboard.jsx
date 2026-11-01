@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Container, Row, Col, Card, Badge, Button,
-  Alert, Spinner, ProgressBar,
+  Alert, Spinner, ProgressBar, Modal,
 } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import AutoControlledVideo from '../../components/AutoControlledVideo/AutoControlledVideo';
@@ -23,7 +23,7 @@ function authFetch(path, options = {}) {
 }
 
 // ── LectureList ───────────────────────────────────────────────────────────────
-function LectureList({ lectures, currentLectureId, onSelectLecture }) {
+function LectureList({ lectures, currentLectureId, onSelectLecture, disabled = false }) {
   return (
     <div
       className="d-flex flex-column gap-2"
@@ -32,7 +32,7 @@ function LectureList({ lectures, currentLectureId, onSelectLecture }) {
       {lectures.map((lec, idx) => {
         const isFirst = idx === 0;
         const prevDone = idx > 0 && lectures[idx - 1].completed;
-        const isAccessible = isFirst || prevDone || lec.completed;
+        const isAccessible = !disabled && (isFirst || prevDone || lec.completed);
         const isCurrent = lec._id === currentLectureId;
 
         let statusIcon = '🔒';
@@ -142,11 +142,12 @@ function Dashboard() {
 
   // ── Learning view state ─────────────────────────────────────────────────────
   const [selectedEnrollment, setSelectedEnrollment] = useState(null); // full enrollment
-  const [courseDetail, setCourseDetail]             = useState(null);  // GET /api/courses/:id result
-  const [lectures, setLectures]                     = useState([]);    // merged lectures+completion
-  const [currentLecture, setCurrentLecture]         = useState(null);
-  const [detailLoading, setDetailLoading]           = useState(false);
-  const [detailError, setDetailError]               = useState('');
+  const [courseDetail, setCourseDetail] = useState(null);  // GET /api/courses/:id result
+  const [lectures, setLectures] = useState([]);    // merged lectures+completion
+  const [currentLecture, setCurrentLecture] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const [showCourseCompleted, setShowCourseCompleted] = useState(false);
 
   // ── Fetch enrolled courses on mount ────────────────────────────────────────
   const fetchEnrollments = useCallback(async () => {
@@ -200,17 +201,22 @@ function Dashboard() {
   }, [logout, navigate]);
 
   // ── Lecture completed callback ──────────────────────────────────────────────
-  const handleLectureCompleted = useCallback((completedLectureId) => {
+  const handleLectureCompleted = useCallback((completedLectureId, { courseCompleted } = {}) => {
     setLectures((prev) => {
       const updated = prev.map((l) =>
         l._id === completedLectureId ? { ...l, completed: true } : l
       );
 
-      // Auto-advance: find next unlocked lecture
       const completedIdx = updated.findIndex((l) => l._id === completedLectureId);
-      const next = updated[completedIdx + 1];
-      if (next && !next.completed) {
-        setCurrentLecture(next);
+      const isLastLecture = completedIdx === updated.length - 1;
+
+      if (isLastLecture || courseCompleted) {
+        // Show course-completion celebration modal
+        setShowCourseCompleted(true);
+      } else {
+        // Auto-advance to next lecture
+        const next = updated[completedIdx + 1];
+        if (next && !next.completed) setCurrentLecture(next);
       }
 
       return updated;
@@ -235,6 +241,7 @@ function Dashboard() {
     setCourseDetail(null);
     setLectures([]);
     setCurrentLecture(null);
+    setShowCourseCompleted(false);
   };
 
   // ─── RENDER: Grid view ────────────────────────────────────────────────────
@@ -314,6 +321,8 @@ function Dashboard() {
           videoId={currentLecture.videoUrl}
           courseId={courseDetail?._id}
           lectureId={currentLecture._id}
+          lecture={currentLecture}
+          isLastLecture={lectures.length > 0 && currentLecture._id === lectures[lectures.length - 1]._id}
           onLectureCompleted={handleLectureCompleted}
           lectureListSlot={
             <>
@@ -331,6 +340,30 @@ function Dashboard() {
           }
         />
       )}
+
+      {/* ── Course Completion Modal ── */}
+      <Modal
+        show={showCourseCompleted}
+        onHide={() => { setShowCourseCompleted(false); handleBack(); }}
+        centered
+        contentClassName="bg-dark border border-secondary text-white"
+      >
+        <Modal.Body className="text-center p-5">
+          <div style={{ fontSize: '4rem' }}>🎓</div>
+          <h3 className="fw-bold text-warning mt-3 mb-2">Course Completed!</h3>
+          <p className="text-secondary mb-4">
+            Congratulations! You have successfully completed the entire course!
+          </p>
+          <Button
+            variant="warning"
+            className="fw-bold px-5"
+            style={{ color: '#000' }}
+            onClick={() => { setShowCourseCompleted(false); handleBack(); }}
+          >
+            Back to Dashboard
+          </Button>
+        </Modal.Body>
+      </Modal>
     </Container>
   );
 }

@@ -2,19 +2,7 @@ import React, { useRef, useState, useEffect, forwardRef, useImperativeHandle } f
 import YouTube from "react-youtube";
 import "./CustomVideoPlayer.css";
 
-// SVG Icons
-const PlayIcon = () => (
-  <svg viewBox="0 0 24 24">
-    <path d="M8 5v14l11-7z" />
-  </svg>
-);
-
-const PauseIcon = () => (
-  <svg viewBox="0 0 24 24">
-    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-  </svg>
-);
-
+// SVG Icons (kept for potential future use / fullscreen only controls)
 const FullscreenIcon = () => (
   <svg viewBox="0 0 24 24">
     <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
@@ -30,6 +18,10 @@ const formatTime = (timeInSeconds) => {
 
 /**
  * CustomVideoPlayer
+ *
+ * Play/pause is controlled EXCLUSIVELY by the parent (AutoControlledVideo)
+ * via the imperative ref methods playVideo() / pauseVideo().
+ * The student cannot manually toggle playback — that is driven by face detection.
  *
  * Props:
  *   videoId          — YouTube 11-char video ID (required)
@@ -55,7 +47,7 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange, onVideoEnded
     setIsPlaying(false);
   }, [videoId]);
 
-  // Expose play/pause to parent (AutoControlledVideo)
+  // Expose playVideo / pauseVideo / resetPlayer to AutoControlledVideo
   useImperativeHandle(ref, () => ({
     playVideo: () => {
       if (internalPlayerRef.current) internalPlayerRef.current.playVideo();
@@ -63,13 +55,24 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange, onVideoEnded
     pauseVideo: () => {
       if (internalPlayerRef.current) internalPlayerRef.current.pauseVideo();
     },
+    // Wipes currentTime AND maxTimeWatched to 00:00 so anti-skip is
+    // fully re-engaged when a student must rewatch after failing the quiz.
+    resetPlayer: () => {
+      setCurrentTime(0);
+      setMaxTimeWatched(0);
+      if (internalPlayerRef.current) {
+        internalPlayerRef.current.seekTo(0, true);
+        internalPlayerRef.current.pauseVideo();
+      }
+    },
   }));
 
   const onReady = (event) => {
     internalPlayerRef.current = event.target;
     setDuration(event.target.getDuration());
     event.target.setPlaybackRate(playbackRate);
-    event.target.playVideo();
+    // Do NOT call playVideo() here — AutoControlledVideo will call it once
+    // face detection confirms the user is initialized and focused.
   };
 
   const onStateChange = (event) => {
@@ -82,7 +85,7 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange, onVideoEnded
       setIsPlaying(false);
       onPlayStateChange?.(false);
     } else if (event.data === 0) {
-      // ENDED — fire callback so parent can mark complete + auto-advance
+      // ENDED — fire callback so parent can mark video watched + flip to quiz
       setIsPlaying(false);
       onPlayStateChange?.(false);
       onVideoEnded?.();
@@ -103,15 +106,6 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange, onVideoEnded
     }
     return () => clearInterval(interval);
   }, [isPlaying, maxTimeWatched]);
-
-  const togglePlay = () => {
-    if (!internalPlayerRef.current) return;
-    if (isPlaying) {
-      internalPlayerRef.current.pauseVideo();
-    } else {
-      internalPlayerRef.current.playVideo();
-    }
-  };
 
   const handleProgressClick = (e) => {
     if (!internalPlayerRef.current || duration === 0) return;
@@ -168,7 +162,7 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange, onVideoEnded
             width: "100%",
             height: "100%",
             playerVars: {
-              autoplay: 1,
+              autoplay: 0,      // never auto-play — face detection must approve first
               controls: 0,
               disablekb: 1,
               modestbranding: 1,
@@ -179,8 +173,7 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange, onVideoEnded
             },
           }}
         />
-        {/* Transparent overlay intercepts clicks meant for the iframe */}
-        <div className="click-interceptor" onClick={togglePlay}></div>
+        {/* No click-interceptor: students cannot toggle playback manually */}
       </div>
 
       <div className="custom-controls">
@@ -191,9 +184,7 @@ const CustomVideoPlayer = forwardRef(({ videoId, onPlayStateChange, onVideoEnded
 
         <div className="controls-row">
           <div className="controls-left">
-            <button className="control-btn" onClick={togglePlay} title={isPlaying ? "Pause" : "Play"}>
-              {isPlaying ? <PauseIcon /> : <PlayIcon />}
-            </button>
+            {/* No play/pause button — playback is AI-controlled only */}
             <span className="time-display">
               {formatTime(currentTime)} / {formatTime(duration)}
             </span>

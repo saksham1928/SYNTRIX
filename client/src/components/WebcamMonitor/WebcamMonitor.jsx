@@ -3,7 +3,7 @@ import Webcam from "react-webcam";
 import { FACE_DETECTION_CONFIG } from "../../utils/faceDetectionConfig";
 import { Card, Badge } from "react-bootstrap";
 
-const WebcamMonitor = forwardRef(({ isFocused, debugInfo, showPreview = true }, ref) => {
+const WebcamMonitor = forwardRef(({ isFocused, debugInfo, showPreview = true, isPaused = false }, ref) => {
   if (!showPreview) {
     return (
       <Webcam
@@ -20,6 +20,38 @@ const WebcamMonitor = forwardRef(({ isFocused, debugInfo, showPreview = true }, 
         }}
         style={{ display: "none" }}
       />
+    );
+  }
+
+  // Paused state (quiz in progress) overrides focus colours
+  if (isPaused) {
+    return (
+      <Card className="shadow-sm border-2 border-secondary">
+        <Card.Header className="d-flex justify-content-between align-items-center bg-white">
+          <h6 className="mb-0 fw-bold text-dark">Camera Feed</h6>
+          <Badge bg="secondary" pill className="px-3">? Paused for Quiz</Badge>
+        </Card.Header>
+        <Card.Body className="p-2 text-center bg-dark">
+          <Webcam
+            ref={ref}
+            audio={false}
+            mirrored={true}
+            width="100%"
+            screenshotFormat="image/jpeg"
+            videoConstraints={{
+              width: FACE_DETECTION_CONFIG.WEBCAM_WIDTH,
+              height: FACE_DETECTION_CONFIG.WEBCAM_HEIGHT,
+              facingMode: "user",
+            }}
+            style={{ borderRadius: "4px", objectFit: "cover", maxHeight: "240px" }}
+          />
+        </Card.Body>
+        <Card.Footer className="bg-secondary text-white bg-opacity-10 py-2">
+          <small className="font-monospace text-dark d-block text-truncate" style={{ fontSize: '0.75rem' }}>
+            Focus monitoring paused during quiz
+          </small>
+        </Card.Footer>
+      </Card>
     );
   }
 
