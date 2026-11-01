@@ -9,7 +9,18 @@ import { useNavigate } from 'react-router-dom';
 const API_BASE = 'http://localhost:5000';
 const TOKEN_KEY = 'stryx_token';
 
-const EMPTY_LECTURE = () => ({ title: '', videoUrl: '' });
+// ── Factory functions ────────────────────────────────────────────────────────
+const EMPTY_QUESTION = () => ({
+  questionText: '',
+  options: ['', ''],       // starts with 2 empty options
+  correctOptionIndex: 0,
+});
+
+const EMPTY_LECTURE = () => ({
+  title: '',
+  videoUrl: '',
+  questions: [EMPTY_QUESTION()], // every lecture starts with 1 question
+});
 
 function Admin() {
   const { logout } = useAuth();
@@ -27,25 +38,134 @@ function Admin() {
   const [fieldErrors, setFieldErrors] = useState({});
 
   // ── Lecture list helpers ───────────────────────────────────────────────────
-  const addLecture = () => {
-    setLectures((prev) => [...prev, EMPTY_LECTURE()]);
-  };
+  const addLecture = () => setLectures((prev) => [...prev, EMPTY_LECTURE()]);
 
-  const removeLecture = (idx) => {
+  const removeLecture = (idx) =>
     setLectures((prev) => prev.filter((_, i) => i !== idx));
-  };
 
   const updateLecture = (idx, field, value) => {
     setLectures((prev) =>
       prev.map((lec, i) => (i === idx ? { ...lec, [field]: value } : lec))
     );
-    // Clear field-level error on edit
     setFieldErrors((prev) => {
       const next = { ...prev };
       delete next[`lec_${idx}_${field}`];
       return next;
     });
   };
+
+  // ── Question helpers ───────────────────────────────────────────────────────
+  const addQuestion = (lectureIdx) =>
+    setLectures((prev) =>
+      prev.map((lec, i) =>
+        i === lectureIdx
+          ? { ...lec, questions: [...lec.questions, EMPTY_QUESTION()] }
+          : lec
+      )
+    );
+
+  const removeQuestion = (lectureIdx, questionIdx) =>
+    setLectures((prev) =>
+      prev.map((lec, i) =>
+        i === lectureIdx
+          ? { ...lec, questions: lec.questions.filter((_, qi) => qi !== questionIdx) }
+          : lec
+      )
+    );
+
+  const updateQuestionText = (lectureIdx, questionIdx, text) => {
+    setLectures((prev) =>
+      prev.map((lec, i) =>
+        i === lectureIdx
+          ? {
+              ...lec,
+              questions: lec.questions.map((q, qi) =>
+                qi === questionIdx ? { ...q, questionText: text } : q
+              ),
+            }
+          : lec
+      )
+    );
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next[`lec_${lectureIdx}_q_${questionIdx}_text`];
+      return next;
+    });
+  };
+
+  // ── Option helpers ─────────────────────────────────────────────────────────
+  const addOption = (lectureIdx, questionIdx) =>
+    setLectures((prev) =>
+      prev.map((lec, i) =>
+        i === lectureIdx
+          ? {
+              ...lec,
+              questions: lec.questions.map((q, qi) =>
+                qi === questionIdx && q.options.length < 4
+                  ? { ...q, options: [...q.options, ''] }
+                  : q
+              ),
+            }
+          : lec
+      )
+    );
+
+  const removeOption = (lectureIdx, questionIdx, optionIdx) =>
+    setLectures((prev) =>
+      prev.map((lec, i) => {
+        if (i !== lectureIdx) return lec;
+        return {
+          ...lec,
+          questions: lec.questions.map((q, qi) => {
+            if (qi !== questionIdx || q.options.length <= 2) return q;
+            const newOptions = q.options.filter((_, oi) => oi !== optionIdx);
+            let newCorrect = q.correctOptionIndex;
+            if (optionIdx === q.correctOptionIndex) newCorrect = 0;
+            else if (optionIdx < q.correctOptionIndex) newCorrect = q.correctOptionIndex - 1;
+            return { ...q, options: newOptions, correctOptionIndex: newCorrect };
+          }),
+        };
+      })
+    );
+
+  const updateOptionText = (lectureIdx, questionIdx, optionIdx, text) => {
+    setLectures((prev) =>
+      prev.map((lec, i) =>
+        i === lectureIdx
+          ? {
+              ...lec,
+              questions: lec.questions.map((q, qi) =>
+                qi === questionIdx
+                  ? {
+                      ...q,
+                      options: q.options.map((opt, oi) => (oi === optionIdx ? text : opt)),
+                    }
+                  : q
+              ),
+            }
+          : lec
+      )
+    );
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next[`lec_${lectureIdx}_q_${questionIdx}_opt_${optionIdx}`];
+      return next;
+    });
+  };
+
+  const setCorrectOption = (lectureIdx, questionIdx, optionIdx) =>
+    setLectures((prev) =>
+      prev.map((lec, i) =>
+        i === lectureIdx
+          ? {
+              ...lec,
+              questions: lec.questions.map((q, qi) =>
+                qi === questionIdx ? { ...q, correctOptionIndex: optionIdx } : q
+              ),
+            }
+          : lec
+      )
+    );
 
   // ── Client-side validation ─────────────────────────────────────────────────
   const validate = () => {
@@ -57,6 +177,23 @@ function Admin() {
     lectures.forEach((lec, idx) => {
       if (!lec.title.trim()) errs[`lec_${idx}_title`] = 'Lecture title required.';
       if (!lec.videoUrl.trim()) errs[`lec_${idx}_videoUrl`] = 'YouTube link/ID required.';
+
+      if (!lec.questions || lec.questions.length < 1) {
+        errs[`lec_${idx}_questions`] = 'At least one question is required.';
+      }
+
+      (lec.questions || []).forEach((q, qIdx) => {
+        if (!q.questionText.trim())
+          errs[`lec_${idx}_q_${qIdx}_text`] = 'Question text is required.';
+        if (q.options.length < 2 || q.options.length > 4)
+          errs[`lec_${idx}_q_${qIdx}_options`] = 'Must have 2–4 options.';
+        q.options.forEach((opt, optIdx) => {
+          if (!opt.trim())
+            errs[`lec_${idx}_q_${qIdx}_opt_${optIdx}`] = 'Option text cannot be empty.';
+        });
+        if (q.correctOptionIndex < 0 || q.correctOptionIndex >= q.options.length)
+          errs[`lec_${idx}_q_${qIdx}_correct`] = 'Select a valid correct option.';
+      });
     });
 
     return errs;
@@ -91,6 +228,11 @@ function Admin() {
             title: lec.title.trim(),
             videoUrl: lec.videoUrl.trim(),
             order: idx,
+            questions: lec.questions.map((q) => ({
+              questionText: q.questionText.trim(),
+              options: q.options.map((opt) => opt.trim()),
+              correctOptionIndex: q.correctOptionIndex,
+            })),
           })),
         }),
       });
@@ -105,7 +247,6 @@ function Admin() {
 
       if (res.ok) {
         setSuccess(`✅ Course "${data.title}" created with ${data.lectures.length} lecture(s)!`);
-        // Reset form
         setTitle('');
         setDescription('');
         setLectures([EMPTY_LECTURE()]);
@@ -119,8 +260,9 @@ function Admin() {
     }
   };
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <Container className="py-5" style={{ maxWidth: '800px' }}>
+    <Container className="py-5" style={{ maxWidth: '860px' }}>
       {/* ── Page header ── */}
       <div className="d-flex align-items-center gap-3 mb-4">
         <h1 className="fw-bold text-warning mb-0">Admin Panel</h1>
@@ -206,7 +348,7 @@ function Admin() {
               <div className="text-danger small mb-2">{fieldErrors.lectures}</div>
             )}
 
-            <div className="d-flex flex-column gap-3 mb-4">
+            <div className="d-flex flex-column gap-4 mb-4">
               {lectures.map((lec, idx) => (
                 <Card
                   key={idx}
@@ -214,6 +356,7 @@ function Admin() {
                   style={{ borderRadius: 8 }}
                 >
                   <Card.Body className="p-3">
+                    {/* Lecture header */}
                     <div className="d-flex align-items-center justify-content-between mb-3">
                       <span
                         className="fw-semibold text-primary"
@@ -235,7 +378,8 @@ function Admin() {
                       )}
                     </div>
 
-                    <Row className="g-2">
+                    {/* Lecture title + URL */}
+                    <Row className="g-2 mb-3">
                       <Col md={5}>
                         <Form.Group controlId={`admin-lec-${idx}-title`}>
                           <Form.Label className="text-secondary small mb-1">Title</Form.Label>
@@ -271,6 +415,149 @@ function Admin() {
                         </Form.Group>
                       </Col>
                     </Row>
+
+                    {/* ── Quiz Questions ── */}
+                    <div
+                      className="border border-secondary rounded p-3"
+                      style={{ background: 'rgba(255,255,255,0.03)' }}
+                    >
+                      <div className="d-flex align-items-center justify-content-between mb-3">
+                        <span className="fw-semibold text-warning" style={{ fontSize: '0.8rem', letterSpacing: '0.06em' }}>
+                          LECTURE QUIZ QUESTIONS
+                        </span>
+                        <Badge bg="secondary" pill>{lec.questions.length} question{lec.questions.length !== 1 ? 's' : ''}</Badge>
+                      </div>
+
+                      {fieldErrors[`lec_${idx}_questions`] && (
+                        <div className="text-danger small mb-2">{fieldErrors[`lec_${idx}_questions`]}</div>
+                      )}
+
+                      <div className="d-flex flex-column gap-3">
+                        {lec.questions.map((q, qIdx) => (
+                          <div
+                            key={qIdx}
+                            className="border border-secondary rounded p-3"
+                            style={{ background: 'rgba(0,0,0,0.3)' }}
+                          >
+                            {/* Question header */}
+                            <div className="d-flex align-items-center justify-content-between mb-2">
+                              <Badge bg="primary" pill style={{ fontSize: '0.7rem' }}>
+                                Question {qIdx + 1}
+                              </Badge>
+                              <Button
+                                variant="outline-danger"
+                                size="sm"
+                                onClick={() => removeQuestion(idx, qIdx)}
+                                disabled={lec.questions.length <= 1}
+                                className="py-0 px-2"
+                                style={{ fontSize: '0.7rem' }}
+                              >
+                                🗑 Remove Question
+                              </Button>
+                            </div>
+
+                            {/* Question text */}
+                            <Form.Group className="mb-3" controlId={`lec-${idx}-q-${qIdx}-text`}>
+                              <Form.Control
+                                type="text"
+                                placeholder="e.g. What does the useState hook return?"
+                                className="bg-dark text-white border-secondary"
+                                value={q.questionText}
+                                onChange={(e) => updateQuestionText(idx, qIdx, e.target.value)}
+                                isInvalid={!!fieldErrors[`lec_${idx}_q_${qIdx}_text`]}
+                              />
+                              <Form.Control.Feedback type="invalid">
+                                {fieldErrors[`lec_${idx}_q_${qIdx}_text`]}
+                              </Form.Control.Feedback>
+                            </Form.Group>
+
+                            {/* Options */}
+                            <div className="d-flex flex-column gap-2 mb-2">
+                              {q.options.map((opt, optIdx) => (
+                                <div key={optIdx} className="d-flex align-items-center gap-2">
+                                  {/* Correct-answer radio */}
+                                  <Form.Check
+                                    type="radio"
+                                    name={`correct_${idx}_${qIdx}`}
+                                    id={`correct_${idx}_${qIdx}_${optIdx}`}
+                                    checked={q.correctOptionIndex === optIdx}
+                                    onChange={() => setCorrectOption(idx, qIdx, optIdx)}
+                                    title="Mark as correct answer"
+                                  />
+                                  {/* Option label */}
+                                  <span className="text-secondary fw-bold" style={{ minWidth: 20 }}>
+                                    {String.fromCharCode(65 + optIdx)}.
+                                  </span>
+                                  {/* Option text */}
+                                  <div className="flex-grow-1">
+                                    <Form.Control
+                                      type="text"
+                                      placeholder={`Option ${String.fromCharCode(65 + optIdx)}`}
+                                      className="bg-dark text-white border-secondary"
+                                      value={opt}
+                                      onChange={(e) => updateOptionText(idx, qIdx, optIdx, e.target.value)}
+                                      isInvalid={!!fieldErrors[`lec_${idx}_q_${qIdx}_opt_${optIdx}`]}
+                                      style={{ fontSize: '0.88rem' }}
+                                    />
+                                    {fieldErrors[`lec_${idx}_q_${qIdx}_opt_${optIdx}`] && (
+                                      <div className="text-danger" style={{ fontSize: '0.75rem' }}>
+                                        {fieldErrors[`lec_${idx}_q_${qIdx}_opt_${optIdx}`]}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {/* Delete option */}
+                                  <Button
+                                    variant="link"
+                                    className="text-danger p-0"
+                                    style={{ fontSize: '0.85rem', lineHeight: 1 }}
+                                    onClick={() => removeOption(idx, qIdx, optIdx)}
+                                    disabled={q.options.length <= 2}
+                                    title="Remove option"
+                                  >
+                                    ✕
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Option-level errors */}
+                            {fieldErrors[`lec_${idx}_q_${qIdx}_options`] && (
+                              <div className="text-danger small mb-1">
+                                {fieldErrors[`lec_${idx}_q_${qIdx}_options`]}
+                              </div>
+                            )}
+                            {fieldErrors[`lec_${idx}_q_${qIdx}_correct`] && (
+                              <div className="text-danger small mb-1">
+                                {fieldErrors[`lec_${idx}_q_${qIdx}_correct`]}
+                              </div>
+                            )}
+
+                            {/* Add option */}
+                            <Button
+                              variant="outline-secondary"
+                              size="sm"
+                              onClick={() => addOption(idx, qIdx)}
+                              disabled={q.options.length >= 4}
+                              className="mt-1"
+                              style={{ fontSize: '0.75rem' }}
+                            >
+                              + Add Option
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Add question */}
+                      <Button
+                        variant="outline-warning"
+                        size="sm"
+                        onClick={() => addQuestion(idx)}
+                        className="mt-3 fw-semibold"
+                        style={{ fontSize: '0.78rem' }}
+                      >
+                        + Add Question
+                      </Button>
+                    </div>
                   </Card.Body>
                 </Card>
               ))}

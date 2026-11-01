@@ -54,11 +54,44 @@ router.post('/', verifyToken, requireAdmin, async (req, res) => {
       if (!videoId) {
         return res.status(400).json({ message: `Lecture ${i + 1}: invalid YouTube URL or ID.` });
       }
+
+      // Validate quiz questions — every lecture must have at least 1
+      if (!Array.isArray(lec.questions) || lec.questions.length < 1) {
+        return res.status(400).json({ message: `Lecture ${i + 1}: At least one quiz question is required.` });
+      }
+      for (let qIdx = 0; qIdx < lec.questions.length; qIdx++) {
+        const q = lec.questions[qIdx];
+        if (!q.questionText || !q.questionText.trim()) {
+          return res.status(400).json({ message: `Lecture ${i + 1}, Question ${qIdx + 1}: question text is required.` });
+        }
+        if (!Array.isArray(q.options) || q.options.length < 2 || q.options.length > 4) {
+          return res.status(400).json({ message: `Lecture ${i + 1}, Question ${qIdx + 1}: must have between 2 and 4 options.` });
+        }
+        for (let optIdx = 0; optIdx < q.options.length; optIdx++) {
+          if (!q.options[optIdx] || q.options[optIdx].trim().length === 0) {
+            return res.status(400).json({ message: `Lecture ${i + 1}, Question ${qIdx + 1}, Option ${optIdx + 1}: option text cannot be empty.` });
+          }
+        }
+        if (
+          typeof q.correctOptionIndex !== 'number' ||
+          q.correctOptionIndex < 0 ||
+          q.correctOptionIndex >= q.options.length
+        ) {
+          return res.status(400).json({ message: `Lecture ${i + 1}, Question ${qIdx + 1}: invalid correctOptionIndex.` });
+        }
+      }
+
       processedLectures.push({
         title: lec.title.trim(),
         videoUrl: videoId,
         order: lec.order !== undefined ? lec.order : i,
         durationSeconds: lec.durationSeconds || 0,
+        questions: lec.questions.map((q) => ({
+          questionText: q.questionText.trim(),
+          options: q.options.map((o) => o.trim()),
+          correctOptionIndex: q.correctOptionIndex,
+        })),
+        totalObtainableScore: lec.questions.length,
       });
     }
 
@@ -99,12 +132,12 @@ router.get('/enrolled', verifyToken, async (req, res) => {
       // Attach completion to each lecture
       const lecturesWithCompletion = course
         ? course.lectures.map((lec) => ({
-            _id: lec._id,
-            title: lec.title,
-            videoUrl: lec.videoUrl,
-            order: lec.order,
-            completed: completionMap[lec._id.toString()] || false,
-          }))
+          _id: lec._id,
+          title: lec.title,
+          videoUrl: lec.videoUrl,
+          order: lec.order,
+          completed: completionMap[lec._id.toString()] || false,
+        }))
         : [];
 
       const totalLectures = lecturesWithCompletion.length;
@@ -116,11 +149,11 @@ router.get('/enrolled', verifyToken, async (req, res) => {
         completedAt: enr.completedAt,
         course: course
           ? {
-              _id: course._id,
-              title: course.title,
-              description: course.description,
-              lectures: lecturesWithCompletion,
-            }
+            _id: course._id,
+            title: course.title,
+            description: course.description,
+            lectures: lecturesWithCompletion,
+          }
           : null,
         progress: { completed: completedLectures, total: totalLectures },
       };
@@ -176,20 +209,47 @@ router.get('/:id', verifyToken, async (req, res) => {
     const completionMap = {};
     if (enrollment) {
       enrollment.lectures.forEach((l) => {
-        completionMap[l.lectureId.toString()] = { completed: l.completed, completedAt: l.completedAt };
+        completionMap[l.lectureId.toString()] = {
+          completed: l.completed,
+          completedAt: l.completedAt,
+          videoWatched: l.videoWatched,
+          quizScore: l.quizScore,
+          totalScore: l.totalScore,
+          quizPassed: l.quizPassed,
+        };
       });
     }
 
-    const lecturesWithCompletion = course.lectures.map((lec) => {
-      const comp = completionMap[lec._id.toString()] || { completed: false, completedAt: null };
+    // Sanitize lectures: strip correctOptionIndex so students cannot see answers
+    const sanitizedLectures = course.lectures.map((lec) => {
+      const comp = completionMap[lec._id.toString()] || {
+        completed: false,
+        completedAt: null,
+        videoWatched: false,
+        quizScore: 0,
+        totalScore: lec.totalObtainableScore || lec.questions.length,
+        quizPassed: false,
+      };
+
+      const publicQuestions = (lec.questions || []).map((q) => ({
+        _id: q._id,
+        questionText: q.questionText,
+        options: q.options,
+      }));
+
       return {
         _id: lec._id,
         title: lec.title,
         videoUrl: lec.videoUrl,
         order: lec.order,
         durationSeconds: lec.durationSeconds,
+        totalObtainableScore: lec.totalObtainableScore || lec.questions.length,
+        questions: publicQuestions,
         completed: comp.completed,
         completedAt: comp.completedAt,
+        videoWatched: comp.videoWatched || false,
+        quizScore: comp.quizScore || 0,
+        quizPassed: comp.quizPassed || false,
       };
     });
 
@@ -199,7 +259,7 @@ router.get('/:id', verifyToken, async (req, res) => {
       description: course.description,
       createdBy: course.createdBy,
       createdAt: course.createdAt,
-      lectures: lecturesWithCompletion,
+      lectures: sanitizedLectures,
       enrolled: !!enrollment,
     });
   } catch (err) {
@@ -231,6 +291,11 @@ router.post('/:courseId/enroll', verifyToken, async (req, res) => {
       lectureId: lec._id,
       completed: false,
       completedAt: null,
+      videoWatched: false,
+      quizScore: 0,
+      totalScore: lec.totalObtainableScore || lec.questions.length,
+      quizPassed: false,
+      questionScores: [],
     }));
 
     const enrollment = new Enrollment({
@@ -301,6 +366,189 @@ router.post('/:courseId/lectures/:lectureId/complete', verifyToken, async (req, 
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error marking lecture complete.' });
+  }
+});
+
+// ─── POST /api/courses/:courseId/lectures/:lectureId/video-watched ────────────
+router.post('/:courseId/lectures/:lectureId/video-watched', verifyToken, async (req, res) => {
+  try {
+    const { courseId, lectureId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(courseId) || !mongoose.Types.ObjectId.isValid(lectureId)) {
+      return res.status(404).json({ message: 'Course or lecture not found.' });
+    }
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found.' });
+    }
+
+    const lectureExists = course.lectures.some((l) => l._id.toString() === lectureId);
+    if (!lectureExists) {
+      return res.status(404).json({ message: 'Lecture not found in this course.' });
+    }
+
+    const enrollment = await Enrollment.findOne({ user: req.user.id, course: courseId });
+    if (!enrollment) {
+      return res.status(404).json({ message: 'You are not enrolled in this course.' });
+    }
+
+    const lecSubdoc = enrollment.lectures.find((l) => l.lectureId.toString() === lectureId);
+    if (!lecSubdoc) {
+      return res.status(404).json({ message: 'Lecture progress record not found.' });
+    }
+
+    lecSubdoc.videoWatched = true;
+    await enrollment.save();
+
+    return res.status(200).json({ message: 'Video marked as watched.', videoWatched: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error marking video as watched.' });
+  }
+});
+
+// ─── POST /api/courses/:courseId/lectures/:lectureId/quiz/answer ──────────────
+router.post('/:courseId/lectures/:lectureId/quiz/answer', verifyToken, async (req, res) => {
+  try {
+    const { courseId, lectureId } = req.params;
+    const { questionId, selectedOptionIndex } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(courseId) || !mongoose.Types.ObjectId.isValid(lectureId)) {
+      return res.status(404).json({ message: 'Course or lecture not found.' });
+    }
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found.' });
+    }
+
+    // Use Mongoose subdocument .id() helper to locate the lecture then the question
+    const targetLecture = course.lectures.id(lectureId);
+    if (!targetLecture) {
+      return res.status(404).json({ message: 'Lecture not found in this course.' });
+    }
+
+    const question = targetLecture.questions.id(questionId);
+    if (!question) {
+      return res.status(404).json({ message: 'Question not found in this lecture.' });
+    }
+
+    const enrollment = await Enrollment.findOne({ user: req.user.id, course: courseId });
+    if (!enrollment) {
+      return res.status(404).json({ message: 'You are not enrolled in this course.' });
+    }
+
+    const lecSubdoc = enrollment.lectures.find((l) => l.lectureId.toString() === lectureId);
+    if (!lecSubdoc) {
+      return res.status(404).json({ message: 'Lecture progress record not found.' });
+    }
+
+    // Server-side grading — correctOptionIndex never leaves the server
+    const isCorrect =
+      typeof selectedOptionIndex === 'number' && selectedOptionIndex === question.correctOptionIndex;
+    const score = isCorrect ? 1 : 0;
+
+    // Upsert: update existing record for this question, or push a new one
+    const existing = lecSubdoc.questionScores.find(
+      (qs) => qs.questionId.toString() === questionId.toString()
+    );
+    if (existing) {
+      existing.selectedOption = selectedOptionIndex;
+      existing.isCorrect = isCorrect;
+      existing.score = score;
+    } else {
+      lecSubdoc.questionScores.push({
+        questionId: question._id,
+        selectedOption: selectedOptionIndex,
+        isCorrect,
+        score,
+      });
+    }
+
+    await enrollment.save();
+
+    return res.status(200).json({
+      questionId: question._id,
+      isCorrect,
+      correctOptionIndex: question.correctOptionIndex,
+      score,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error grading quiz answer.' });
+  }
+});
+
+// ─── POST /api/courses/:courseId/lectures/:lectureId/quiz/finalize ────────────
+router.post('/:courseId/lectures/:lectureId/quiz/finalize', verifyToken, async (req, res) => {
+  try {
+    const { courseId, lectureId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(courseId) || !mongoose.Types.ObjectId.isValid(lectureId)) {
+      return res.status(404).json({ message: 'Course or lecture not found.' });
+    }
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found.' });
+    }
+
+    const targetLecture = course.lectures.id(lectureId);
+    if (!targetLecture) {
+      return res.status(404).json({ message: 'Lecture not found in this course.' });
+    }
+
+    const enrollment = await Enrollment.findOne({ user: req.user.id, course: courseId });
+    if (!enrollment) {
+      return res.status(404).json({ message: 'You are not enrolled in this course.' });
+    }
+
+    const lecSubdoc = enrollment.lectures.find((l) => l.lectureId.toString() === lectureId);
+    if (!lecSubdoc) {
+      return res.status(404).json({ message: 'Lecture progress record not found.' });
+    }
+
+    // Calculate score from recorded question attempts
+    const currentScore = lecSubdoc.questionScores.reduce((acc, q) => acc + (q.score || 0), 0);
+    const maxScore = targetLecture.questions.length;
+    const passed = maxScore > 0 ? currentScore / maxScore >= 0.5 : true;
+
+    lecSubdoc.quizScore = currentScore;
+    lecSubdoc.totalScore = maxScore;
+    lecSubdoc.quizPassed = passed;
+
+    if (passed) {
+      lecSubdoc.completed = true;
+      lecSubdoc.completedAt = new Date();
+
+      // Check if the entire course is now complete
+      const allDone = enrollment.lectures.every((l) => l.completed);
+      if (allDone && !enrollment.completedAt) {
+        enrollment.completedAt = new Date();
+      }
+    } else {
+      // Hard reset — forces full rewatch before next attempt
+      lecSubdoc.completed = false;
+      lecSubdoc.videoWatched = false;
+      lecSubdoc.quizScore = 0;
+      lecSubdoc.quizPassed = false;
+      lecSubdoc.questionScores = [];
+    }
+
+    await enrollment.save();
+
+    return res.status(200).json({
+      passed,
+      quizScore: currentScore,
+      totalScore: maxScore,
+      percentage: maxScore > 0 ? Math.round((currentScore / maxScore) * 100) : 0,
+      completed: lecSubdoc.completed,
+      courseCompleted: !!enrollment.completedAt,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error finalizing quiz.' });
   }
 });
 

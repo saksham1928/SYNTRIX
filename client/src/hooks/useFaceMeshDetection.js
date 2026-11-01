@@ -39,27 +39,44 @@ export function useFaceMeshDetection(webcamRef, options = {}) {
           FACE_DETECTION_CONFIG.WASM_PATH
         );
 
-        const landmarker = await FaceLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: FACE_DETECTION_CONFIG.MODEL_PATH,
-            delegate: "GPU",
-          },
-          runningMode: "VIDEO",
-          numFaces: 1,
-          minFaceDetectionConfidence: FACE_DETECTION_CONFIG.MIN_DETECTION_CONFIDENCE,
-          minFacePresenceConfidence: FACE_DETECTION_CONFIG.MIN_DETECTION_CONFIDENCE,
-          minTrackingConfidence: FACE_DETECTION_CONFIG.MIN_TRACKING_CONFIDENCE,
-        });
+        // Try GPU first; fall back to CPU if GPU is unavailable (incognito, no WebGL, etc.)
+        let landmarker;
+        try {
+          landmarker = await FaceLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: FACE_DETECTION_CONFIG.MODEL_PATH,
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            numFaces: 1,
+            minFaceDetectionConfidence: FACE_DETECTION_CONFIG.MIN_DETECTION_CONFIDENCE,
+            minFacePresenceConfidence: FACE_DETECTION_CONFIG.MIN_DETECTION_CONFIDENCE,
+            minTrackingConfidence: FACE_DETECTION_CONFIG.MIN_TRACKING_CONFIDENCE,
+          });
+          console.log("Face Mesh model loaded (GPU delegate)");
+        } catch (gpuErr) {
+          console.warn("GPU delegate failed, retrying with CPU:", gpuErr.message);
+          landmarker = await FaceLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: FACE_DETECTION_CONFIG.MODEL_PATH,
+              delegate: "CPU",
+            },
+            runningMode: "VIDEO",
+            numFaces: 1,
+            minFaceDetectionConfidence: FACE_DETECTION_CONFIG.MIN_DETECTION_CONFIDENCE,
+            minFacePresenceConfidence: FACE_DETECTION_CONFIG.MIN_DETECTION_CONFIDENCE,
+            minTrackingConfidence: FACE_DETECTION_CONFIG.MIN_TRACKING_CONFIDENCE,
+          });
+          console.log("Face Mesh model loaded (CPU delegate)");
+        }
 
         localLandmarker = landmarker;
 
         if (isMounted) {
           faceLandmarkerRef.current = landmarker;
           setIsInitialized(true);
-          console.log("Face Mesh model loaded successfully");
         } else {
-          // Component unmounted while the model was loading — close immediately
-          // so GPU resources are freed and don't block page navigation
+          // Component unmounted while the model was loading — free GPU resources
           console.log("Unmounted before model finished — closing landmarker immediately");
           landmarker.close();
         }
@@ -70,6 +87,7 @@ export function useFaceMeshDetection(webcamRef, options = {}) {
         }
       }
     };
+
 
     initializeFaceLandmarker();
 
